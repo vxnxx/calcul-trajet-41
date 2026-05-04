@@ -351,14 +351,14 @@ document.getElementById('swapBtn').addEventListener('click', () => {
 });
 
 document.getElementById('calcBtn').addEventListener('click', calculerTrajet);
-document.getElementById('end').addEventListener('keypress',   e => { if (e.key === 'Enter') calculerTrajet(); });
-document.getElementById('start').addEventListener('keypress', e => { if (e.key === 'Enter') calculerTrajet(); });
+document.getElementById('end').addEventListener('keydown',   e => { if (e.key === 'Enter') calculerTrajet(); });
+document.getElementById('start').addEventListener('keydown', e => { if (e.key === 'Enter') calculerTrajet(); });
 
 // ── Actions mode retour ───────────────────────────────────────────────────────
 
 document.getElementById('calcRetourBtn').addEventListener('click', calculerRetour);
-document.getElementById('retourStop').addEventListener('keypress',  e => { if (e.key === 'Enter') calculerRetour(); });
-document.getElementById('retourStart').addEventListener('keypress', e => { if (e.key === 'Enter') calculerRetour(); });
+document.getElementById('retourStop').addEventListener('keydown',  e => { if (e.key === 'Enter') calculerRetour(); });
+document.getElementById('retourStart').addEventListener('keydown', e => { if (e.key === 'Enter') calculerRetour(); });
 
 // ── Geocoding ─────────────────────────────────────────────────────────────────
 
@@ -541,7 +541,7 @@ async function calculerRetour() {
             ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Petit détour' }
             : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Trop de détour' };
 
-        const extraSign     = `+${extra}`;
+        const extraSign     = extra === 0 ? 'Aucun' : `+${extra}`;
         const mapsRetourUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startVal)}&waypoints=${encodeURIComponent(stopVal)}&destination=${encodeURIComponent('Blois, 41000')}&travelmode=driving`;
 
         const r = document.getElementById('resultRetour');

@@ -173,6 +173,13 @@
             padding: 0 14px;
             height: 36px;
             border-top: 1px solid rgba(0,0,0,0.06);
+            border-left: none;
+            border-right: none;
+            border-bottom: none;
+            border-radius: 0;
+            background: transparent;
+            font-family: inherit;
+            width: 100%;
             gap: 10px;
             cursor: pointer;
             transition: background 0.15s;
@@ -582,10 +589,10 @@
                 </div>
             </div>
 
-            <div class="swap-row" id="swapBtn">
+            <button class="swap-row" id="swapBtn">
                 <div class="swap-icon-wrap"><span class="swap-icon">⇅</span></div>
                 <span class="swap-label">Inverser départ et arrivée</span>
-            </div>
+            </button>
         </div>
 
         <button id="calcBtn" class="btn-calc">Calculer le trajet</button>
