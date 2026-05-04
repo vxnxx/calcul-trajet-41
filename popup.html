@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+            width: 320px;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            overflow: hidden;
+        }
+
+        /* Focus visible */
+        :focus-visible {
+            outline: 2px solid rgba(0, 122, 255, 0.6);
+            outline-offset: 2px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            margin: 12px 12px 0;
+            background: #e5e5ea;
+            border-radius: 10px;
+            padding: 2px;
+            gap: 2px;
+        }
+
+        .tab {
+            flex: 1;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            padding: 6px 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #8e8e93;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            font-family: inherit;
+        }
+
+        .tab.active {
+            background: #fff;
+            color: #1d1d1f;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* Card */
+        .card {
+            background: #fff;
+            border-radius: 14px;
+            margin: 12px;
+            padding: 4px 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+        }
+
+        /* Input rows */
+        .input-row {
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            height: 52px;
+            gap: 10px;
+            position: relative;
+            border-radius: 10px;
+        }
+
+        .input-row + .input-row::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 44px;
+            right: 0;
+            height: 1px;
+            background: rgba(0,0,0,0.06);
+        }
+
+        @keyframes inputFlash {
+            0%   { background: rgba(0, 122, 255, 0.08); }
+            100% { background: transparent; }
+        }
+        .input-flash { animation: inputFlash 0.45s ease-out; }
+
+        .input-inner {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .field-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #aeaeb2;
+            margin-bottom: 2px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 14px;
+            font-weight: 400;
+            color: #1d1d1f;
+            font-family: inherit;
+            padding: 0;
+        }
+
+        input[type="text"]::placeholder { color: #c7c7cc; }
+
+        .home-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 6px;
+            transition: background 0.15s;
+            line-height: 1;
+            flex-shrink: 0;
+            color: #8e8e93;
+        }
+
+        .home-btn:hover { background: #f2f2f7; color: #1d1d1f; }
+
+        /* Fixed destination row (retour mode) */
+        .dest-fixed-row {
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            height: 44px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+            gap: 10px;
+        }
+
+        .dest-fixed-icon {
+            font-size: 15px;
+            flex-shrink: 0;
+            color: #aeaeb2;
+        }
+
+        .dest-fixed-inner {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .dest-fixed-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #aeaeb2;
+            margin-bottom: 1px;
+        }
+
+        .dest-fixed-val {
+            font-size: 14px;
+            color: #c7c7cc;
+        }
+
+        /* Swap row */
+        .swap-row {
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            height: 36px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+            gap: 10px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .swap-row:hover { background: #f9f9fb; }
+
+        .swap-icon-wrap {
+            width: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .swap-icon { font-size: 13px; color: #007aff; }
+        .swap-label { font-size: 13px; color: #007aff; font-weight: 500; }
+
+        /* Button */
+        .btn-calc {
+            width: calc(100% - 24px);
+            margin: 0 12px 12px;
+            padding: 13px;
+            background: #007aff;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            font-family: inherit;
+            letter-spacing: -0.1px;
+            transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+            box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-calc:hover {
+            background: #0071e3;
+            box-shadow: 0 4px 14px rgba(0, 122, 255, 0.35);
+        }
+
+        .btn-calc:active { transform: scale(0.98); background: #0068d0; }
+
+        .btn-calc:disabled {
+            background: #aeaeb2;
+            box-shadow: none;
+            cursor: default;
+            transform: none;
+        }
+
+        @keyframes autoFlash {
+            0%   { background: #34c759; box-shadow: 0 2px 8px rgba(52,199,89,0.45); }
+            60%  { background: #007aff; box-shadow: 0 2px 8px rgba(0,122,255,0.3); }
+            100% { background: #007aff; box-shadow: 0 2px 8px rgba(0,122,255,0.3); }
+        }
+        .btn-auto-flash { animation: autoFlash 0.55s ease-out forwards; }
+
+        /* Result */
+        .result-box {
+            margin: 0 12px 12px;
+            display: none;
+            border-radius: 14px;
+            overflow: hidden;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-box.visible { animation: slideUp 0.22s ease; }
+
+        .result-success {
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+            padding: 16px;
+        }
+
+        /* Simple mode result */
+        .result-row {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+        }
+
+        .result-time {
+            display: flex;
+            align-items: baseline;
+            gap: 3px;
+        }
+
+        .result-time .val {
+            font-size: 38px;
+            font-weight: 700;
+            color: #1d1d1f;
+            letter-spacing: -2px;
+            line-height: 1;
+        }
+
+        .result-time .unit {
+            font-size: 16px;
+            font-weight: 500;
+            color: #8e8e93;
+            letter-spacing: -0.3px;
+            padding-bottom: 3px;
+        }
+
+        .result-dist-block { text-align: right; padding-bottom: 4px; }
+
+        .result-dist-block .val {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1d1d1f;
+            letter-spacing: -0.5px;
+            display: block;
+            line-height: 1;
+        }
+
+        .result-dist-block .unit {
+            font-size: 11px;
+            color: #aeaeb2;
+            margin-top: 2px;
+            display: block;
+        }
+
+        /* Retour mode result */
+        .compare-rows { margin-bottom: 10px; }
+
+        .compare-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 4px 0;
+        }
+
+        .compare-row + .compare-row {
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .compare-label { font-size: 12px; color: #8e8e93; }
+
+        .compare-val-col { text-align: right; }
+        .compare-val-col .compare-val {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d1d1f;
+            letter-spacing: -0.3px;
+        }
+        .compare-val-col .compare-sub {
+            display: block;
+            font-size: 11px;
+            color: #aeaeb2;
+            margin-top: 1px;
+        }
+
+        .detour-hero {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            margin: 8px 0 10px;
+        }
+
+        .detour-hero .val {
+            font-size: 38px;
+            font-weight: 700;
+            color: #1d1d1f;
+            letter-spacing: -2px;
+            line-height: 1;
+        }
+
+        .detour-hero .unit {
+            font-size: 16px;
+            font-weight: 500;
+            color: #8e8e93;
+            letter-spacing: -0.3px;
+        }
+
+        /* Loading inline dans le bouton */
+        .btn-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.65s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Autocomplete */
+        .autocomplete-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .suggestions {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.07);
+            z-index: 999;
+            overflow: hidden;
+            display: none;
+        }
+
+        .suggestions.open { display: block; }
+
+        .suggestion-item {
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #1d1d1f;
+            cursor: pointer;
+            line-height: 1.35;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover, .suggestion-item.active { background: #f2f2f7; }
+        .sug-content { flex: 1; min-width: 0; }
+        .suggestion-item .sug-main { font-weight: 500; }
+        .suggestion-item .sug-sub { font-size: 11px; color: #8e8e93; margin-top: 1px; }
+
+        .sug-del-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #c7c7cc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 16px;
+            line-height: 1;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.15s, background 0.15s, color 0.15s;
+        }
+        .suggestion-item:hover .sug-del-btn { opacity: 1; }
+        .sug-del-btn:hover { background: #ffe5e5; color: #ff3b30; }
+
+        /* Status badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .status-ok   { background: #e8f9ef; color: #1a8a3c; }
+        .status-warn { background: #fff4e0; color: #b36200; }
+        .status-bad  { background: #fff0ef; color: #d63031; }
+
+        /* Clear button */
+        .clear-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #c7c7cc;
+            padding: 4px;
+            border-radius: 6px;
+            transition: background 0.15s, color 0.15s;
+            flex-shrink: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+        }
+
+        .clear-btn:hover { background: #f2f2f7; color: #8e8e93; }
+
+        /* Preference row */
+        .pref-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 14px;
+            margin: 6px 12px 0;
+        }
+
+        .pref-label { font-size: 11px; color: #aeaeb2; user-select: none; }
+
+        .toggle-btn {
+            width: 34px;
+            height: 20px;
+            background: #34c759;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.2s;
+            flex-shrink: 0;
+            padding: 0;
+        }
+
+        .toggle-btn[aria-checked="false"] { background: #e5e5ea; }
+
+        .toggle-knob {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.22);
+            transition: transform 0.2s;
+            pointer-events: none;
+        }
+
+        .toggle-btn[aria-checked="true"] .toggle-knob { transform: translateX(14px); }
+
+        /* History / default city icon */
+        .sug-hist-icon { color: #aeaeb2; margin-right: 5px; font-size: 13px; }
+        .sug-default-icon { color: #c7c7cc; margin-right: 5px; font-size: 11px; }
+
+        /* Maps button */
+        .btn-maps {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            margin-top: 10px;
+            padding: 9px;
+            background: transparent;
+            color: #007aff;
+            border: 1.5px solid #007aff;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            font-family: inherit;
+            letter-spacing: -0.1px;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .btn-maps:hover { background: #f0f7ff; }
+        .btn-maps:active { background: #e0efff; }
+
+        /* Error */
+        .result-error {
+            background: #fff2f2;
+            border: 1px solid rgba(255, 59, 48, 0.15);
+            border-radius: 14px;
+            padding: 12px 14px;
+            font-size: 13px;
+            color: #ff3b30;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .result-error-icon { font-size: 16px; flex-shrink: 0; }
+    </style>
+</head>
+<body>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="simple">Trajet simple</button>
+        <button class="tab" data-tab="retour">Retour Blois</button>
+    </div>
+
+    <div class="pref-row">
+        <span class="pref-label">Autocomplétion</span>
+        <button class="toggle-btn" id="historyToggle" role="switch" aria-checked="true" aria-label="Activer ou désactiver l'historique des recherches">
+            <span class="toggle-knob"></span>
+        </button>
+    </div>
+
+    <!-- Mode simple -->
+    <div id="modeSimple">
+        <div class="card">
+            <div class="input-row">
+                <div class="autocomplete-wrap">
+                    <span class="field-label">Départ</span>
+                    <input type="text" id="start" placeholder="Ville ou adresse" autocomplete="off">
+                    <div class="suggestions" id="startSuggestions"></div>
+                </div>
+                <button id="fromBloisBtn" class="home-btn" title="Utiliser Blois comme départ" aria-label="Utiliser Blois comme point de départ">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+                        <path d="M9 21V12h6v9"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="input-row">
+                <div class="autocomplete-wrap">
+                    <span class="field-label">Arrivée</span>
+                    <input type="text" id="end" placeholder="Ville de destination" autocomplete="off">
+                    <div class="suggestions" id="endSuggestions"></div>
+                </div>
+            </div>
+
+            <div class="swap-row" id="swapBtn">
+                <div class="swap-icon-wrap"><span class="swap-icon">⇅</span></div>
+                <span class="swap-label">Inverser départ et arrivée</span>
+            </div>
+        </div>
+
+        <button id="calcBtn" class="btn-calc">Calculer le trajet</button>
+        <div id="result" class="result-box"></div>
+    </div>
+
+    <!-- Mode retour Blois -->
+    <div id="modeRetour" style="display:none">
+        <div class="card">
+            <div class="input-row">
+                <div class="autocomplete-wrap">
+                    <span class="field-label">Vous êtes à</span>
+                    <input type="text" id="retourStart" placeholder="Position actuelle" autocomplete="off">
+                    <div class="suggestions" id="retourStartSuggestions"></div>
+                </div>
+                <button id="fromBloisRetourBtn" class="home-btn" title="Partir de Blois" aria-label="Utiliser Blois comme position de départ">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+                        <path d="M9 21V12h6v9"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="input-row">
+                <div class="autocomplete-wrap">
+                    <span class="field-label">RDV potentiel</span>
+                    <input type="text" id="retourStop" placeholder="Ville du rendez-vous" autocomplete="off">
+                    <div class="suggestions" id="retourStopSuggestions"></div>
+                </div>
+            </div>
+
+            <div class="dest-fixed-row">
+                <span class="dest-fixed-icon">⌂</span>
+                <div class="dest-fixed-inner">
+                    <span class="dest-fixed-label">Destination finale</span>
+                    <span class="dest-fixed-val">Blois, 41000</span>
+                </div>
+            </div>
+        </div>
+
+        <button id="calcRetourBtn" class="btn-calc">Calculer le détour</button>
+        <div id="resultRetour" class="result-box"></div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
