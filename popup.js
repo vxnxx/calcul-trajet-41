@@ -87,6 +87,23 @@ const DEFAULT_CITIES = [
 
 // ── Nominatim : rate limit (1 req/s) + cache ─────────────────────────────────
 
+const PLACE_TYPES = ['city', 'town', 'village', 'hamlet', 'municipality', 'suburb', 'quarter'];
+
+function placePriority(d) {
+    if (d.class === 'place') return 0;
+    if (PLACE_TYPES.includes(d.type)) return 1;
+    if (d.address?.town || d.address?.village || d.address?.city) return 2;
+    return 3;
+}
+
+function nominatimLabel(d) {
+    const a = d.address || {};
+    const first = d.display_name.split(',')[0].trim();
+    return (/^\d/.test(first) ? null : first)
+        || a.hamlet || a.suburb || a.village || a.town || a.city || a.municipality
+        || first;
+}
+
 const _nominatim = {
     lastCall: 0,
     minInterval: 1100,
@@ -113,6 +130,16 @@ const VIEWBOX = "0.70,47.15,2.25,48.20";
 function debounce(fn, delay) {
     let t;
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+}
+
+function getPermutations(arr) {
+    if (arr.length <= 1) return [arr.slice()];
+    const result = [];
+    for (let i = 0; i < arr.length; i++) {
+        const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+        for (const p of getPermutations(rest)) result.push([arr[i], ...p]);
+    }
+    return result;
 }
 
 const _clearUpdaters = {};
@@ -199,24 +226,14 @@ function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showCl
         try {
             const url = nominatimUrl(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&viewbox=${VIEWBOX}&bounded=1&countrycodes=fr&limit=8&addressdetails=1`);
             const data = await _nominatim.fetch(url);
-            const PLACE_TYPES = ['city', 'town', 'village', 'hamlet', 'municipality', 'suburb', 'quarter'];
-            function placePriority(d) {
-                if (d.class === 'place') return 0;
-                if (PLACE_TYPES.includes(d.type)) return 1;
-                if (d.address?.town || d.address?.village || d.address?.city) return 2;
-                return 3;
-            }
             items = data
                 .filter(d => (d.address?.postcode || '').startsWith('41'))
                 .sort((a, b) => placePriority(a) - placePriority(b))
                 .slice(0, 5);
             if (!items.length) { close(); return; }
             box.innerHTML = items.map((d, i) => {
-                const a = d.address || {};
-                const first = d.display_name.split(',')[0].trim();
-                const main = (/^\d/.test(first) ? null : first)
-                    || a.hamlet || a.suburb || a.village || a.town || a.city || a.municipality
-                    || first;
+                const a   = d.address || {};
+                const main = nominatimLabel(d);
                 const sub  = [a.postcode, a.county, a.state].filter(Boolean).join(', ');
                 return `<div class="suggestion-item" data-idx="${i}">
                     <div class="sug-content">
@@ -240,12 +257,8 @@ function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showCl
             input.value = d.label;
         } else {
             const a = d.address || {};
-            const first = d.display_name.split(',')[0].trim();
-            const main = (/^\d/.test(first) ? null : first)
-                || a.hamlet || a.suburb || a.village || a.town || a.city || a.municipality
-                || first;
             const postcode = a.postcode ? `, ${a.postcode}` : '';
-            input.value = main + postcode;
+            input.value = nominatimLabel(d) + postcode;
         }
         input.dataset.lat = d.lat;
         input.dataset.lon = d.lon;
@@ -538,12 +551,6 @@ function formatDuration(minutes) {
     return h > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${minutes} min`;
 }
 
-function formatDistance(meters) {
-    if (meters < 1000) return `${Math.round(meters)} m`;
-    const km = meters / 1000;
-    return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
-}
-
 const STATUS_SVG = {
     ok:   `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5,5.5 3.8,7.8 8.5,2.5"/></svg>`,
     warn: `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 1.5L9 8.5H1z"/><line x1="5" y1="4.5" x2="5" y2="6.2"/><circle cx="5" cy="7.4" r="0.5" fill="currentColor"/></svg>`,
@@ -642,13 +649,24 @@ async function calculerRetour() {
             return fetch(`${base}/${posA.lon},${posA.lat};${partial};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json());
         });
 
-        let dataDirect, dataDetour, dataIntermediate;
+        // Matrice de durées pour optimisation d'ordre (2+ RDVs uniquement)
+        const allPoints    = [posA, ...posStops, BLOIS].map(p => `${p.lon},${p.lat}`).join(';');
+        const tableRequest = posStops.length >= 2
+            ? fetch(`https://router.project-osrm.org/table/v1/driving/${allPoints}?annotations=duration`).then(r => r.json()).catch(() => null)
+            : Promise.resolve(null);
+
+        let dataDirect, dataDetour, dataIntermediate, dataTable;
         try {
-            [dataDirect, dataDetour, ...dataIntermediate] = await Promise.all([
+            const results = await Promise.all([
                 fetch(`${base}/${posA.lon},${posA.lat};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json()),
                 fetch(`${base}/${posA.lon},${posA.lat};${stopsCoords};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json()),
                 ...intermediateRequests,
+                tableRequest,
             ]);
+            dataDirect       = results[0];
+            dataDetour       = results[1];
+            dataIntermediate = results.slice(2, 2 + intermediateRequests.length);
+            dataTable        = results[results.length - 1];
         } catch {
             throw new Error("Service de calcul indisponible");
         }
@@ -695,6 +713,38 @@ async function calculerRetour() {
               }).join('')}</div>`
             : '';
 
+        let optimalHtml = '';
+        if (posStops.length >= 2 && dataTable?.durations) {
+            const n        = posStops.length;
+            const d        = dataTable.durations; // d[i][j] secondes ; 0=A, 1..n=stops, n+1=Blois
+            const identity = posStops.map((_, i) => i);
+
+            function routeDur(perm) {
+                let t = d[0][perm[0] + 1];
+                for (let i = 0; i < perm.length - 1; i++) t += d[perm[i] + 1][perm[i + 1] + 1];
+                return t + d[perm[perm.length - 1] + 1][n + 1];
+            }
+
+            const currentDur = routeDur(identity);
+            let bestPerm = identity, bestDur = currentDur;
+            for (const perm of getPermutations(identity)) {
+                const dur = routeDur(perm);
+                if (dur < bestDur) { bestDur = dur; bestPerm = perm; }
+            }
+
+            const savedMin = Math.round((currentDur - bestDur) / 60);
+            if (savedMin >= 1 && bestPerm.some((v, i) => v !== identity[i])) {
+                const names = bestPerm.map(i => stopVals[i].split(',')[0].trim());
+                optimalHtml = `<div class="optimal-order">
+                    <div class="optimal-order-header">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        Ordre optimal — économise ${savedMin} min
+                    </div>
+                    <div class="optimal-order-stops">${names.join(' → ')}</div>
+                </div>`;
+            }
+        }
+
         const r = document.getElementById('resultRetour');
         r.style.display = 'block';
         r.className = 'result-box visible';
@@ -722,6 +772,7 @@ async function calculerRetour() {
                 </div>
                 <span class="status-badge ${status.cls}">${status.icon} ${status.label}</span>
                 ${breakdownHtml}
+                ${optimalHtml}
                 <button class="btn-maps" id="mapsRetourBtn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
                     Voir dans Google Maps
