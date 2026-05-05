@@ -1,5 +1,6 @@
 // ── History (localStorage) ───────────────────────────────────────────────────
 
+const THEME_KEY        = 'trajet41_theme';
 const HISTORY_KEY      = 'trajet41_history';
 const HISTORY_MAX      = 15;
 const LAST_MODE_KEY    = 'trajet41_lastMode';
@@ -186,18 +187,17 @@ function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showCl
             : DEFAULT_CITIES.map(c => ({ ...c, _isDefault: true }));
         if (!displayItems.length) return;
         items = displayItems;
+        const HIST_SVG    = `<span class="sug-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>`;
+        const DEFAULT_SVG = `<span class="sug-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>`;
+        const DEL_SVG     = `<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>`;
         box.innerHTML = items.map((h, i) => `
             <div class="suggestion-item" data-idx="${i}">
+                ${h._isHistory ? HIST_SVG : DEFAULT_SVG}
                 <div class="sug-content">
-                    <div class="sug-main">
-                        ${h._isHistory
-                            ? '<span class="sug-hist-icon">◷</span>'
-                            : '<span class="sug-default-icon">◎</span>'}
-                        ${h.label}
-                    </div>
+                    <div class="sug-main">${h.label}</div>
                 </div>
                 ${h._isHistory
-                    ? `<button class="sug-del-btn" data-label="${h.label.replace(/"/g, '&quot;')}" title="Supprimer">×</button>`
+                    ? `<button class="sug-del-btn" data-label="${h.label.replace(/"/g, '&quot;')}" title="Supprimer" aria-label="Supprimer de l'historique">${DEL_SVG}</button>`
                     : ''}
             </div>
         `).join('');
@@ -378,7 +378,7 @@ function addRetourStop() {
             <input type="text" id="${inputId}" placeholder="Ville du rendez-vous" autocomplete="off">
             <div class="suggestions" id="${sugId}"></div>
         </div>
-        <button class="remove-stop-btn" title="Supprimer ce RDV" aria-label="Supprimer ce RDV" style="display:none">×</button>
+        <button class="remove-stop-btn" title="Supprimer ce RDV" aria-label="Supprimer ce RDV" style="display:none"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg></button>
     `;
     document.getElementById('retourStopsContainer').appendChild(row);
     retourStopIds.push(inputId);
@@ -402,6 +402,35 @@ function removeRetourStop(stopId) {
     updateAddBtn();
     checkAndCalcRetour();
 }
+
+// ── Toggle historique ─────────────────────────────────────────────────────────
+
+// ── Toggle thème clair / sombre ───────────────────────────────────────────────
+
+const _MOON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+const _SUN  = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+
+function getEffectiveTheme() {
+    return localStorage.getItem(THEME_KEY)
+        || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+
+function updateThemeBtn() {
+    const btn = document.getElementById('themeToggle');
+    const isDark = getEffectiveTheme() === 'dark';
+    btn.innerHTML = isDark ? _SUN : _MOON;
+    btn.title = isDark ? 'Passer en mode clair' : 'Passer en mode sombre';
+    btn.setAttribute('aria-label', btn.title);
+}
+
+const themeToggle = document.getElementById('themeToggle');
+themeToggle.addEventListener('click', () => {
+    const next = getEffectiveTheme() === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, next);
+    document.documentElement.dataset.theme = next;
+    updateThemeBtn();
+});
+updateThemeBtn();
 
 // ── Toggle historique ─────────────────────────────────────────────────────────
 
@@ -469,6 +498,7 @@ function setBloisOnInput(inputId, nextInputId) {
 }
 
 document.getElementById('fromBloisBtn').addEventListener('click', () => setBloisOnInput('start', 'end'));
+document.getElementById('retourFromBloisBtn').addEventListener('click', () => { setBloisOnInput('retourStart', null); checkAndCalcRetour(); });
 
 document.getElementById('swapBtn').addEventListener('click', () => {
     const s = document.getElementById('start');
@@ -537,12 +567,29 @@ function restoreBtn(btnId) {
     btn.disabled = false;
 }
 
+function updateLoadingText(btnId, text) {
+    const btn = document.getElementById(btnId);
+    if (!btn.disabled) return;
+    btn.innerHTML = `<span class="btn-spinner"></span>${text}`;
+}
+
+function flashInputError(inputId) {
+    const row = document.getElementById(inputId)?.closest('.input-row');
+    if (!row) return;
+    row.classList.remove('input-error');
+    void row.offsetWidth;
+    row.classList.add('input-error');
+    row.addEventListener('animationend', () => row.classList.remove('input-error'), { once: true });
+}
+
 function showError(resultId, btnId, msg) {
     restoreBtn(btnId);
     const r = document.getElementById(resultId);
+    r.className = 'result-box';
     r.style.display = 'block';
-    r.className = 'result-box visible';
     r.innerHTML = `<div class="result-error"><span class="result-error-icon">⚠️</span>${msg}</div>`;
+    void r.offsetWidth;
+    r.classList.add('visible');
 }
 
 function formatDuration(minutes) {
@@ -562,13 +609,19 @@ const STATUS_SVG = {
 async function calculerTrajet() {
     const startVal = document.getElementById('start').value.trim();
     const endVal   = document.getElementById('end').value.trim();
-    if (!startVal || !endVal) { showError('result', 'calcBtn', "Remplissez les deux champs"); return; }
+    if (!startVal || !endVal) {
+        if (!startVal) flashInputError('start');
+        if (!endVal)   flashInputError('end');
+        showError('result', 'calcBtn', "Remplissez les deux champs");
+        return;
+    }
 
     showLoading('result', 'calcBtn');
 
     try {
         const start = await getCoords('start');
         const end   = await getCoords('end');
+        updateLoadingText('calcBtn', "Calcul de l'itinéraire…");
 
         let routeData;
         try {
@@ -590,15 +643,15 @@ async function calculerTrajet() {
         const distKm   = (route.distance / 1000).toFixed(1);
 
         const status = durationMin < 20
-            ? { cls: 'status-ok',   icon: STATUS_SVG.ok,   label: 'OK pour enchaîner' }
+            ? { cls: 'status-ok',   icon: STATUS_SVG.ok,   label: 'OK pour enchaîner', title: 'Trajet < 20 min' }
             : durationMin < 35
-            ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Limite — à voir' }
-            : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Trop loin' };
+            ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Limite — à voir',   title: 'Trajet entre 20 et 35 min' }
+            : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Trop loin',         title: 'Trajet > 35 min' };
 
         const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startVal)}&destination=${encodeURIComponent(endVal)}&travelmode=driving`;
         const r = document.getElementById('result');
+        r.className = 'result-box';
         r.style.display = 'block';
-        r.className = 'result-box visible';
         r.innerHTML = `
             <div class="result-success">
                 <div class="result-row">
@@ -611,12 +664,14 @@ async function calculerTrajet() {
                         <span class="unit">km</span>
                     </div>
                 </div>
-                <span class="status-badge ${status.cls}">${status.icon} ${status.label}</span>
+                <span class="status-badge ${status.cls}" title="${status.title}">${status.icon} ${status.label}</span>
                 <button class="btn-maps" id="mapsBtn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
                     Voir dans Google Maps
                 </button>
             </div>`;
+        void r.offsetWidth;
+        r.classList.add('visible');
         document.getElementById('mapsBtn').addEventListener('click', () => window.open(mapsUrl, '_blank'));
         restoreBtn('calcBtn');
     } catch (err) {
@@ -631,7 +686,12 @@ const BLOIS = { lat: "47.5862", lon: "1.3359" };
 async function calculerRetour() {
     const startVal = document.getElementById('retourStart').value.trim();
     const stopVals = retourStopIds.map(id => document.getElementById(id)?.value.trim() || '');
-    if (!startVal || stopVals.some(v => !v)) { showError('resultRetour', 'calcRetourBtn', "Remplissez tous les champs"); return; }
+    if (!startVal || stopVals.some(v => !v)) {
+        if (!startVal) flashInputError('retourStart');
+        retourStopIds.forEach((id, i) => { if (!stopVals[i]) flashInputError(id); });
+        showError('resultRetour', 'calcRetourBtn', "Remplissez tous les champs");
+        return;
+    }
 
     showLoading('resultRetour', 'calcRetourBtn');
 
@@ -639,6 +699,7 @@ async function calculerRetour() {
         const posA = await getCoords('retourStart');
         const posStops = [];
         for (const id of retourStopIds) posStops.push(await getCoords(id));
+        updateLoadingText('calcRetourBtn', 'Calcul des itinéraires…');
 
         const base        = 'https://router.project-osrm.org/route/v1/driving';
         const stopsCoords = posStops.map(p => `${p.lon},${p.lat}`).join(';');
@@ -691,10 +752,10 @@ async function calculerRetour() {
         });
 
         const status = extra < 10
-            ? { cls: 'status-ok',   icon: STATUS_SVG.ok,   label: 'Sur le trajet' }
+            ? { cls: 'status-ok',   icon: STATUS_SVG.ok,   label: 'Sur le trajet', title: 'Détour < 10 min' }
             : extra < 25
-            ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Petit détour' }
-            : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Trop de détour' };
+            ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Petit détour',   title: 'Détour entre 10 et 25 min' }
+            : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Trop de détour', title: 'Détour > 25 min' };
 
         const extraSign  = extra === 0 ? 'Aucun' : `+${extra}`;
         const rdvLabel   = retourStopIds.length > 1 ? `Avec ces ${retourStopIds.length} RDVs` : 'Avec ce RDV';
@@ -746,8 +807,8 @@ async function calculerRetour() {
         }
 
         const r = document.getElementById('resultRetour');
+        r.className = 'result-box';
         r.style.display = 'block';
-        r.className = 'result-box visible';
         r.innerHTML = `
             <div class="result-success">
                 <div class="compare-rows">
@@ -766,11 +827,14 @@ async function calculerRetour() {
                         </div>
                     </div>
                 </div>
-                <div class="detour-hero">
-                    <span class="val">${extraSign}</span>
-                    <span class="unit">min de détour</span>
+                <div class="detour-hero-wrap">
+                    <div class="detour-hero-label">Détour estimé</div>
+                    <div class="detour-hero">
+                        <span class="val">${extraSign}</span>
+                        ${extra > 0 ? '<span class="unit">min</span>' : ''}
+                    </div>
                 </div>
-                <span class="status-badge ${status.cls}">${status.icon} ${status.label}</span>
+                <span class="status-badge ${status.cls}" title="${status.title}">${status.icon} ${status.label}</span>
                 ${breakdownHtml}
                 ${optimalHtml}
                 <button class="btn-maps" id="mapsRetourBtn">
@@ -778,6 +842,8 @@ async function calculerRetour() {
                     Voir dans Google Maps
                 </button>
             </div>`;
+        void r.offsetWidth;
+        r.classList.add('visible');
         document.getElementById('mapsRetourBtn').addEventListener('click', () => window.open(mapsRetourUrl, '_blank'));
         restoreBtn('calcRetourBtn');
         saveRetourState();
