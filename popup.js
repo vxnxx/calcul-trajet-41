@@ -1,12 +1,59 @@
 // ── History (localStorage) ───────────────────────────────────────────────────
 
-const HISTORY_KEY         = 'trajet41_history';
-const HISTORY_MAX         = 15;
-const LAST_MODE_KEY       = 'trajet41_lastMode';
+const HISTORY_KEY      = 'trajet41_history';
+const HISTORY_MAX      = 15;
+const LAST_MODE_KEY    = 'trajet41_lastMode';
 const AUTOCOMPLETE_KEY = 'trajet41_autocomplete';
+const RETOUR_STATE_KEY  = 'trajet41_retourState';
+const RETOUR_MEMORY_KEY = 'trajet41_retourMemory';
 
 function isAutocompleteEnabled() {
     return localStorage.getItem(AUTOCOMPLETE_KEY) !== 'false';
+}
+
+function isRetourMemoryEnabled() {
+    return localStorage.getItem(RETOUR_MEMORY_KEY) === 'true';
+}
+
+function saveRetourState() {
+    if (!isRetourMemoryEnabled()) return;
+    const startInp = document.getElementById('retourStart');
+    const state = {
+        start: startInp.dataset.lat
+            ? { value: startInp.value, lat: startInp.dataset.lat, lon: startInp.dataset.lon }
+            : null,
+        stops: retourStopIds.map(id => {
+            const inp = document.getElementById(id);
+            return inp?.dataset.lat
+                ? { value: inp.value, lat: inp.dataset.lat, lon: inp.dataset.lon }
+                : null;
+        }).filter(Boolean),
+    };
+    localStorage.setItem(RETOUR_STATE_KEY, JSON.stringify(state));
+}
+
+function restoreRetourState() {
+    if (!isRetourMemoryEnabled()) return;
+    let state;
+    try { state = JSON.parse(localStorage.getItem(RETOUR_STATE_KEY)); } catch { return; }
+    if (!state) return;
+
+    if (state.start) {
+        const inp = document.getElementById('retourStart');
+        inp.value = state.start.value;
+        inp.dataset.lat = state.start.lat;
+        inp.dataset.lon = state.start.lon;
+        _clearUpdaters['retourStart']?.();
+    }
+
+    const stops = state.stops || [];
+    stops.forEach((s, i) => {
+        if (i >= retourStopIds.length) addRetourStop();
+        const inp = document.getElementById(retourStopIds[i]);
+        inp.value = s.value;
+        inp.dataset.lat = s.lat;
+        inp.dataset.lon = s.lon;
+    });
 }
 
 function saveHistory(label, lat, lon) {
@@ -70,32 +117,31 @@ function debounce(fn, delay) {
 
 const _clearUpdaters = {};
 
-function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect) {
+function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showClearBtn = true) {
     const input = document.getElementById(inputId);
     const box   = document.getElementById(suggestionsId);
     let activeIdx = -1;
     let items = [];
 
-    const clearBtn = document.createElement('button');
-    clearBtn.className = 'clear-btn';
-    clearBtn.title = 'Effacer';
-    clearBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>`;
-    input.closest('.input-row').appendChild(clearBtn);
-
-    function updateClearBtn() {
-        clearBtn.style.display = input.value ? 'flex' : 'none';
+    let updateClearBtn = () => {};
+    if (showClearBtn) {
+        const clearBtn = document.createElement('button');
+        clearBtn.className = 'clear-btn';
+        clearBtn.title = 'Effacer';
+        clearBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>`;
+        input.closest('.input-row').appendChild(clearBtn);
+        updateClearBtn = () => { clearBtn.style.display = input.value ? 'flex' : 'none'; };
+        clearBtn.addEventListener('mousedown', e => {
+            e.preventDefault();
+            input.value = '';
+            delete input.dataset.lat;
+            delete input.dataset.lon;
+            close();
+            updateClearBtn();
+            input.focus();
+        });
     }
     _clearUpdaters[inputId] = updateClearBtn;
-
-    clearBtn.addEventListener('mousedown', e => {
-        e.preventDefault();
-        input.value = '';
-        delete input.dataset.lat;
-        delete input.dataset.lon;
-        close();
-        updateClearBtn();
-        input.focus();
-    });
 
     function close() { box.classList.remove('open'); activeIdx = -1; }
 
@@ -269,17 +315,80 @@ function checkAndCalcSimple() {
 
 function checkAndCalcRetour() {
     const s = document.getElementById('retourStart');
-    const e = document.getElementById('retourStop');
-    if (s.dataset.lat && e.dataset.lat) {
+    const allReady = retourStopIds.every(id => document.getElementById(id)?.dataset.lat);
+    if (s.dataset.lat && allReady && retourStopIds.length > 0) {
         triggerAutoFlash('calcRetourBtn');
         calculerRetour();
     }
 }
 
-setupAutocomplete('start',       'startSuggestions',       'end',         checkAndCalcSimple);
-setupAutocomplete('end',         'endSuggestions',          null,          checkAndCalcSimple);
-setupAutocomplete('retourStart', 'retourStartSuggestions', 'retourStop',  checkAndCalcRetour);
-setupAutocomplete('retourStop',  'retourStopSuggestions',   null,          checkAndCalcRetour);
+setupAutocomplete('start',       'startSuggestions',       'end',  checkAndCalcSimple);
+setupAutocomplete('end',         'endSuggestions',          null,   checkAndCalcSimple);
+setupAutocomplete('retourStart', 'retourStartSuggestions',  null,   checkAndCalcRetour);
+
+// ── Gestion des lignes RDV dynamiques (mode retour) ───────────────────────────
+
+let retourStopIds = [];
+let retourStopCounter = 0;
+const MAX_STOPS = 5;
+
+function updateStopLabels() {
+    retourStopIds.forEach((id, i) => {
+        const row = document.querySelector(`[data-stop-id="${id}"]`);
+        if (row) row.querySelector('.field-label').textContent = retourStopIds.length > 1 ? `RDV ${i + 1}` : 'RDV potentiel';
+    });
+}
+
+function updateRemoveBtns() {
+    const show = retourStopIds.length > 1;
+    retourStopIds.forEach(id => {
+        const row = document.querySelector(`[data-stop-id="${id}"]`);
+        if (row) row.querySelector('.remove-stop-btn').style.display = show ? 'flex' : 'none';
+    });
+}
+
+function updateAddBtn() {
+    document.getElementById('addStopBtn').style.display = retourStopIds.length >= MAX_STOPS ? 'none' : '';
+}
+
+function addRetourStop() {
+    const idx = retourStopCounter++;
+    const inputId = `retourStop_${idx}`;
+    const sugId   = `retourStopSug_${idx}`;
+
+    const row = document.createElement('div');
+    row.className = 'input-row retour-stop-row';
+    row.dataset.stopId = inputId;
+    row.innerHTML = `
+        <div class="autocomplete-wrap">
+            <span class="field-label">RDV potentiel</span>
+            <input type="text" id="${inputId}" placeholder="Ville du rendez-vous" autocomplete="off">
+            <div class="suggestions" id="${sugId}"></div>
+        </div>
+        <button class="remove-stop-btn" title="Supprimer ce RDV" aria-label="Supprimer ce RDV" style="display:none">×</button>
+    `;
+    document.getElementById('retourStopsContainer').appendChild(row);
+    retourStopIds.push(inputId);
+
+    row.querySelector('.remove-stop-btn').addEventListener('click', () => removeRetourStop(inputId));
+    setupAutocomplete(inputId, sugId, null, checkAndCalcRetour, false);
+    document.getElementById(inputId).addEventListener('keydown', e => { if (e.key === 'Enter') calculerRetour(); });
+
+    updateStopLabels();
+    updateRemoveBtns();
+    updateAddBtn();
+}
+
+function removeRetourStop(stopId) {
+    const row = document.querySelector(`[data-stop-id="${stopId}"]`);
+    if (row) row.remove();
+    retourStopIds = retourStopIds.filter(id => id !== stopId);
+    delete _clearUpdaters[stopId];
+    updateStopLabels();
+    updateRemoveBtns();
+    updateAddBtn();
+    checkAndCalcRetour();
+}
 
 // ── Toggle historique ─────────────────────────────────────────────────────────
 
@@ -289,6 +398,14 @@ historyToggle.addEventListener('click', () => {
     const next = !isAutocompleteEnabled();
     localStorage.setItem(AUTOCOMPLETE_KEY, next ? 'true' : 'false');
     historyToggle.setAttribute('aria-checked', next ? 'true' : 'false');
+});
+
+const retourMemoryToggle = document.getElementById('retourMemoryToggle');
+retourMemoryToggle.setAttribute('aria-checked', isRetourMemoryEnabled() ? 'true' : 'false');
+retourMemoryToggle.addEventListener('click', () => {
+    const next = !isRetourMemoryEnabled();
+    localStorage.setItem(RETOUR_MEMORY_KEY, next ? 'true' : 'false');
+    retourMemoryToggle.setAttribute('aria-checked', next ? 'true' : 'false');
 });
 
 // ── Tabs + persistance du mode ────────────────────────────────────────────────
@@ -311,8 +428,9 @@ if (_lastMode === 'retour') document.querySelector('[data-tab="retour"]').click(
 
 document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    ['start', 'end', 'retourStart', 'retourStop'].forEach(id => {
+    ['start', 'end', 'retourStart', ...retourStopIds].forEach(id => {
         const inp = document.getElementById(id);
+        if (!inp) return;
         inp.value = '';
         delete inp.dataset.lat;
         delete inp.dataset.lon;
@@ -338,7 +456,6 @@ function setBloisOnInput(inputId, nextInputId) {
 }
 
 document.getElementById('fromBloisBtn').addEventListener('click', () => setBloisOnInput('start', 'end'));
-document.getElementById('fromBloisRetourBtn').addEventListener('click', () => setBloisOnInput('retourStart', 'retourStop'));
 
 document.getElementById('swapBtn').addEventListener('click', () => {
     const s = document.getElementById('start');
@@ -357,8 +474,10 @@ document.getElementById('start').addEventListener('keydown', e => { if (e.key ==
 // ── Actions mode retour ───────────────────────────────────────────────────────
 
 document.getElementById('calcRetourBtn').addEventListener('click', calculerRetour);
-document.getElementById('retourStop').addEventListener('keydown',  e => { if (e.key === 'Enter') calculerRetour(); });
 document.getElementById('retourStart').addEventListener('keydown', e => { if (e.key === 'Enter') calculerRetour(); });
+document.getElementById('addStopBtn').addEventListener('click', addRetourStop);
+addRetourStop();
+restoreRetourState();
 
 // ── Geocoding ─────────────────────────────────────────────────────────────────
 
@@ -504,21 +623,31 @@ const BLOIS = { lat: "47.5862", lon: "1.3359" };
 
 async function calculerRetour() {
     const startVal = document.getElementById('retourStart').value.trim();
-    const stopVal  = document.getElementById('retourStop').value.trim();
-    if (!startVal || !stopVal) { showError('resultRetour', 'calcRetourBtn', "Remplissez les deux champs"); return; }
+    const stopVals = retourStopIds.map(id => document.getElementById(id)?.value.trim() || '');
+    if (!startVal || stopVals.some(v => !v)) { showError('resultRetour', 'calcRetourBtn', "Remplissez tous les champs"); return; }
 
     showLoading('resultRetour', 'calcRetourBtn');
 
     try {
-        const posA   = await getCoords('retourStart');
-        const posRDV = await getCoords('retourStop');
-        const base   = 'https://router.project-osrm.org/route/v1/driving';
+        const posA = await getCoords('retourStart');
+        const posStops = [];
+        for (const id of retourStopIds) posStops.push(await getCoords(id));
 
-        let dataDirect, dataDetour;
+        const base        = 'https://router.project-osrm.org/route/v1/driving';
+        const stopsCoords = posStops.map(p => `${p.lon},${p.lat}`).join(';');
+
+        // Requêtes principales + routes intermédiaires pour le détail par RDV (en parallèle)
+        const intermediateRequests = posStops.slice(0, -1).map((_, k) => {
+            const partial = posStops.slice(0, k + 1).map(p => `${p.lon},${p.lat}`).join(';');
+            return fetch(`${base}/${posA.lon},${posA.lat};${partial};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json());
+        });
+
+        let dataDirect, dataDetour, dataIntermediate;
         try {
-            [dataDirect, dataDetour] = await Promise.all([
+            [dataDirect, dataDetour, ...dataIntermediate] = await Promise.all([
                 fetch(`${base}/${posA.lon},${posA.lat};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json()),
-                fetch(`${base}/${posA.lon},${posA.lat};${posRDV.lon},${posRDV.lat};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json()),
+                fetch(`${base}/${posA.lon},${posA.lat};${stopsCoords};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json()),
+                ...intermediateRequests,
             ]);
         } catch {
             throw new Error("Service de calcul indisponible");
@@ -535,14 +664,36 @@ async function calculerRetour() {
         const extraRaw = dataDetour.routes[0].duration - dataDirect.routes[0].duration;
         const extra    = Math.max(0, Math.round(extraRaw / 60));
 
+        // Détail incrémental par RDV : coût de chaque stop par rapport à l'étape précédente
+        // allSteps = [direct, via S1, via S1+S2, ..., via tous]
+        const allSteps = [dataDirect, ...dataIntermediate, dataDetour];
+        const stepDeltas = posStops.map((_, i) => {
+            const raw = allSteps[i + 1].routes?.[0]?.duration - allSteps[i].routes?.[0]?.duration;
+            return isFinite(raw) ? Math.max(0, Math.round(raw / 60)) : null;
+        });
+
         const status = extra < 10
             ? { cls: 'status-ok',   icon: STATUS_SVG.ok,   label: 'Sur le trajet' }
             : extra < 25
             ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Petit détour' }
             : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Trop de détour' };
 
-        const extraSign     = extra === 0 ? 'Aucun' : `+${extra}`;
-        const mapsRetourUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startVal)}&waypoints=${encodeURIComponent(stopVal)}&destination=${encodeURIComponent('Blois, 41000')}&travelmode=driving`;
+        const extraSign  = extra === 0 ? 'Aucun' : `+${extra}`;
+        const rdvLabel   = retourStopIds.length > 1 ? `Avec ces ${retourStopIds.length} RDVs` : 'Avec ce RDV';
+        const waypoints  = stopVals.map(encodeURIComponent).join('|');
+        const mapsRetourUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startVal)}&waypoints=${waypoints}&destination=${encodeURIComponent('Blois, 41000')}&travelmode=driving`;
+
+        const breakdownHtml = retourStopIds.length > 1
+            ? `<div class="stop-breakdown">${stopVals.map((v, i) => {
+                const name  = v.split(',')[0].trim();
+                const delta = stepDeltas[i];
+                const txt   = delta === null ? '–' : delta === 0 ? 'Aucun' : `+${delta} min`;
+                return `<div class="stop-breakdown-row">
+                    <span class="stop-breakdown-name">${name}</span>
+                    <span class="stop-breakdown-delta">${txt}</span>
+                </div>`;
+              }).join('')}</div>`
+            : '';
 
         const r = document.getElementById('resultRetour');
         r.style.display = 'block';
@@ -558,7 +709,7 @@ async function calculerRetour() {
                         </div>
                     </div>
                     <div class="compare-row">
-                        <span class="compare-label">Avec ce RDV</span>
+                        <span class="compare-label">${rdvLabel}</span>
                         <div class="compare-val-col">
                             <span class="compare-val">${formatDuration(minDetour)}</span>
                             <span class="compare-sub">${distDetourKm} km</span>
@@ -570,6 +721,7 @@ async function calculerRetour() {
                     <span class="unit">min de détour</span>
                 </div>
                 <span class="status-badge ${status.cls}">${status.icon} ${status.label}</span>
+                ${breakdownHtml}
                 <button class="btn-maps" id="mapsRetourBtn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
                     Voir dans Google Maps
@@ -577,6 +729,7 @@ async function calculerRetour() {
             </div>`;
         document.getElementById('mapsRetourBtn').addEventListener('click', () => window.open(mapsRetourUrl, '_blank'));
         restoreBtn('calcRetourBtn');
+        saveRetourState();
     } catch (err) {
         showError('resultRetour', 'calcRetourBtn', err.message);
     }
