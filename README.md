@@ -15,7 +15,7 @@ Durée, distance et badge de statut selon le temps de trajet (OK / Petit détour
 - Lien Google Maps avec tous les waypoints
 
 **Préférences**
-- *Autocomplétion* : suggestions Nominatim filtrées sur le département 41
+- *Autocomplétion* : suggestions BAN (Base Adresse Nationale) filtrées sur le département 41
 - *Mémoriser* : restaure automatiquement les derniers RDVs saisis à la prochaine ouverture
 
 ## Installation
@@ -29,7 +29,7 @@ Durée, distance et badge de statut selon le temps de trajet (OK / Petit détour
 
 | Service | Usage |
 |---|---|
-| [Nominatim](https://nominatim.openstreetmap.org) | Géocodage (filtre code postal 41) |
+| [BAN](https://api-adresse.data.gouv.fr) | Géocodage — Base Adresse Nationale (filtre dept. 41, 50 req/s/IP) |
 | [OSRM](https://router.project-osrm.org) | Calcul des itinéraires et matrice de durées |
 | Google Maps | Ouverture du trajet complet (onglet externe) |
 
@@ -38,8 +38,9 @@ Aucune clé API requise. Aucune dépendance externe.
 ## Structure
 
 ```
-manifest.json   — Manifest v3
-popup.html      — Interface + styles
-popup.js        — Toute la logique (~480 lignes)
-icon.png        — Icône de l'extension
+manifest.json    — Manifest v3
+popup.html       — Interface + styles
+popup.js         — Toute la logique (~600 lignes)
+theme-init.js    — Restauration du thème avant rendu (anti-FOUC, MV3-compatible)
+icon.png         — Icône de l'extension
 ```

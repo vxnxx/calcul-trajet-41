@@ -86,45 +86,33 @@ const DEFAULT_CITIES = [
     { label: 'Selles-sur-Cher, 41130',        lat: '47.2774', lon: '1.5522' },
 ];
 
-// ── Nominatim : rate limit (1 req/s) + cache ─────────────────────────────────
+// ── BAN (Base Adresse Nationale) : cache ─────────────────────────────────────
 
-const PLACE_TYPES = ['city', 'town', 'village', 'hamlet', 'municipality', 'suburb', 'quarter'];
-
-function placePriority(d) {
-    if (d.class === 'place') return 0;
-    if (PLACE_TYPES.includes(d.type)) return 1;
-    if (d.address?.town || d.address?.village || d.address?.city) return 2;
-    return 3;
-}
-
-function nominatimLabel(d) {
-    const a = d.address || {};
-    const first = d.display_name.split(',')[0].trim();
-    return (/^\d/.test(first) ? null : first)
-        || a.hamlet || a.suburb || a.village || a.town || a.city || a.municipality
-        || first;
-}
-
-const _nominatim = {
-    lastCall: 0,
-    minInterval: 1100,
+const _ban = {
     cache: new Map(),
     async fetch(url) {
         if (this.cache.has(url)) return this.cache.get(url);
-        const wait = Math.max(0, this.minInterval - (Date.now() - this.lastCall));
-        if (wait > 0) await new Promise(r => setTimeout(r, wait));
-        this.lastCall = Date.now();
         const data = await (await fetch(url)).json();
         this.cache.set(url, data);
         return data;
     }
 };
 
-function nominatimUrl(base) {
-    return `${base}&email=calcul-trajet-41`;
+function banLabel(f) {
+    const p = f.properties;
+    const name = p.name || p.city;
+    return p.postcode ? `${name}, ${p.postcode}` : name;
 }
 
-const VIEWBOX = "0.70,47.15,2.25,48.20";
+function banToItem(f) {
+    return {
+        label:     banLabel(f),
+        lat:       String(f.geometry.coordinates[1]),
+        lon:       String(f.geometry.coordinates[0]),
+        _city:     f.properties.name || f.properties.city,
+        _postcode: f.properties.postcode || '',
+    };
+}
 
 // ── Autocomplete ──────────────────────────────────────────────────────────────
 
@@ -224,24 +212,22 @@ function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showCl
         if (!isAutocompleteEnabled()) { close(); return; }
         if (query.length < 2) { close(); return; }
         try {
-            const url = nominatimUrl(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&viewbox=${VIEWBOX}&bounded=1&countrycodes=fr&limit=8&addressdetails=1`);
-            const data = await _nominatim.fetch(url);
-            items = data
-                .filter(d => (d.address?.postcode || '').startsWith('41'))
-                .sort((a, b) => placePriority(a) - placePriority(b))
-                .slice(0, 5);
+            const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=8&autocomplete=1`;
+            const data = await _ban.fetch(url);
+            const seen = new Set();
+            items = (data.features || [])
+                .filter(f => (f.properties.postcode || '').startsWith('41'))
+                .filter(f => ['municipality', 'locality'].includes(f.properties.type))
+                .filter(f => { const k = `${f.properties.name}_${f.properties.postcode}`; return !seen.has(k) && !!seen.add(k); })
+                .slice(0, 5)
+                .map(banToItem);
             if (!items.length) { close(); return; }
-            box.innerHTML = items.map((d, i) => {
-                const a   = d.address || {};
-                const main = nominatimLabel(d);
-                const sub  = [a.postcode, a.county, a.state].filter(Boolean).join(', ');
-                return `<div class="suggestion-item" data-idx="${i}">
+            box.innerHTML = items.map((d, i) => `<div class="suggestion-item" data-idx="${i}">
                     <div class="sug-content">
-                        <div class="sug-main">${main}</div>
-                        ${sub ? `<div class="sug-sub">${sub}</div>` : ''}
+                        <div class="sug-main">${d._city}</div>
+                        ${d._postcode ? `<div class="sug-sub">${d._postcode}</div>` : ''}
                     </div>
-                </div>`;
-            }).join('');
+                </div>`).join('');
             box.querySelectorAll('.suggestion-item').forEach(el => {
                 el.addEventListener('mousedown', e => { e.preventDefault(); select(parseInt(el.dataset.idx)); });
             });
@@ -253,13 +239,7 @@ function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showCl
     function select(idx) {
         const d = items[idx];
         if (!d) return;
-        if (d._isHistory || d._isDefault) {
-            input.value = d.label;
-        } else {
-            const a = d.address || {};
-            const postcode = a.postcode ? `, ${a.postcode}` : '';
-            input.value = nominatimLabel(d) + postcode;
-        }
+        input.value = d.label;
         input.dataset.lat = d.lat;
         input.dataset.lon = d.lon;
         // Flash l'input-row pour confirmer la sélection
@@ -533,15 +513,16 @@ async function getCoords(inputId) {
     const query = input.value.trim();
     let data;
     try {
-        const url = nominatimUrl(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&viewbox=${VIEWBOX}&bounded=1&countrycodes=fr&limit=5&addressdetails=1`);
-        data = await _nominatim.fetch(url);
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`;
+        data = await _ban.fetch(url);
     } catch {
         throw new Error("Service de géocodage indisponible");
     }
-    const result = data?.find(d => (d.address?.postcode || '').startsWith('41'));
-    if (result) {
-        saveHistory(query, result.lat, result.lon);
-        return { lat: result.lat, lon: result.lon };
+    const feature = data?.features?.find(f => (f.properties.postcode || '').startsWith('41'));
+    if (feature) {
+        const item = banToItem(feature);
+        saveHistory(item.label, item.lat, item.lon);
+        return { lat: item.lat, lon: item.lon };
     }
     throw new Error(`"${query}" introuvable dans le 41`);
 }
