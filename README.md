@@ -5,18 +5,26 @@ Extension Chrome pour calculer rapidement des temps de trajet dans le **Loir-et-
 ## Fonctionnalités
 
 **Mode Simple** — A → B  
-Durée, distance et badge de statut selon le temps de trajet (OK / Petit détour / Trop loin).
+Durée, distance et badge de statut selon le temps de trajet (OK / Limite / Trop loin, seuils 20 / 35 min).
 
 **Mode Retour Blois** — A → RDVs → Blois  
-- Jusqu'à 5 RDVs intermédiaires dynamiques
+- Jusqu'à 7 RDVs intermédiaires dynamiques
+- Destination fixe : Blois (bouton raccourci pour mettre Blois en départ)
 - Comparaison trajet direct vs. avec détour(s)
 - Détail incrémental du temps ajouté par chaque RDV
-- **Suggestion d'ordre optimal** : si un autre ordre des RDVs fait gagner ≥ 1 min, l'extension le propose avec le gain estimé
+- **Suggestion d'ordre optimal** : si un autre ordre des RDVs fait gagner ≥ 1 min, l'extension le propose avec le gain estimé et le temps total de trajet optimal
+- Bouton **Tout effacer** pour réinitialiser tous les champs en un clic
 - Lien Google Maps avec tous les waypoints
+
+**Mode Trajet multiple** — A → RDVs → B  
+- Même fonctionnement que Retour Blois, mais la destination est un champ libre
+- Boutons raccourcis Blois sur le départ et l'arrivée
+- Jusqu'à 7 RDVs intermédiaires, breakdown et ordre optimal (avec temps total) inclus
+- Bouton **Tout effacer** pour réinitialiser tous les champs en un clic
 
 **Préférences**
 - *Autocomplétion* : suggestions BAN (Base Adresse Nationale) filtrées sur le département 41
-- *Mémoriser* : restaure automatiquement les derniers RDVs saisis à la prochaine ouverture
+- *Mémoriser* : restaure automatiquement les derniers RDVs saisis (fonctionne pour les deux modes avec détours)
 
 ## Installation
 
@@ -40,7 +48,7 @@ Aucune clé API requise. Aucune dépendance externe.
 ```
 manifest.json    — Manifest v3
 popup.html       — Interface + styles
-popup.js         — Toute la logique (~600 lignes)
+popup.js         — Toute la logique (~900 lignes)
 theme-init.js    — Restauration du thème avant rendu (anti-FOUC, MV3-compatible)
 icon.png         — Icône de l'extension
 ```

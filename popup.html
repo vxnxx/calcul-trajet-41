@@ -315,6 +315,16 @@
             color: var(--placeholder);
         }
 
+        .multi-end-row::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--sep);
+        }
+
         /* Swap row */
         .swap-row {
             display: flex;
@@ -344,6 +354,33 @@
 
         .swap-icon { color: #007aff; display: flex; align-items: center; }
         .swap-label { font-size: 13px; color: #007aff; font-weight: 500; }
+
+        /* Button row (calc + clear) */
+        .btn-row {
+            display: flex;
+            gap: 8px;
+            margin: 0 12px 12px;
+        }
+        .btn-row .btn-calc {
+            flex: 1;
+            width: auto;
+            margin: 0;
+        }
+        .btn-clear {
+            flex-shrink: 0;
+            padding: 0 14px;
+            background: var(--surface);
+            border: 1.5px solid var(--sep);
+            border-radius: 12px;
+            color: var(--text-2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .btn-clear:hover { background: var(--del-hover-bg); color: var(--del-hover-text); border-color: transparent; }
+        .btn-clear:active { transform: scale(0.97); }
 
         /* Button */
         .btn-calc {
@@ -723,6 +760,12 @@
             font-weight: 500;
         }
 
+        .optimal-order-total {
+            font-size: 11px;
+            color: var(--text-2);
+            margin-top: 4px;
+        }
+
         /* Add/remove stop rows */
         .retour-stop-row::before {
             content: '';
@@ -809,7 +852,7 @@
             gap: 8px;
         }
 
-        .result-error-icon { font-size: 16px; flex-shrink: 0; }
+        .result-error-icon { display: flex; flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -817,6 +860,7 @@
     <div class="tabs">
         <button class="tab active" data-tab="simple">Trajet simple</button>
         <button class="tab" data-tab="retour">Retour Blois</button>
+        <button class="tab" data-tab="multi">Trajet multiple</button>
     </div>
 
     <div class="prefs-row">
@@ -912,8 +956,67 @@
             </div>
         </div>
 
-        <button id="calcRetourBtn" class="btn-calc">Calculer le détour</button>
+        <div class="btn-row">
+            <button id="calcRetourBtn" class="btn-calc">Calculer le détour</button>
+            <button id="clearRetourBtn" class="btn-clear" title="Tout effacer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+        </div>
         <div id="resultRetour" class="result-box"></div>
+    </div>
+
+    <!-- Mode trajet multiple -->
+    <div id="modeMulti" style="display:none">
+        <div class="card">
+            <div class="input-row">
+                <div class="autocomplete-wrap">
+                    <span class="field-label">Départ</span>
+                    <input type="text" id="multiStart" placeholder="Ville de départ" autocomplete="off">
+                    <div class="suggestions" id="multiStartSuggestions"></div>
+                </div>
+                <button id="multiStartBloisBtn" class="home-btn" title="Partir de Blois" aria-label="Utiliser Blois comme point de départ">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+                        <path d="M9 21V12h6v9"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div id="multiStopsContainer"></div>
+            <button class="add-stop-row" id="addMultiStopBtn">
+                <div class="swap-icon-wrap">
+                    <span class="add-stop-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </span>
+                </div>
+                <span class="add-stop-label">Ajouter un RDV</span>
+            </button>
+
+            <div class="input-row multi-end-row">
+                <div class="autocomplete-wrap">
+                    <span class="field-label">Arrivée</span>
+                    <input type="text" id="multiEnd" placeholder="Destination finale" autocomplete="off">
+                    <div class="suggestions" id="multiEndSuggestions"></div>
+                </div>
+                <button id="multiEndBloisBtn" class="home-btn" title="Utiliser Blois comme destination" aria-label="Utiliser Blois comme destination">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/>
+                        <path d="M9 21V12h6v9"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button id="calcMultiBtn" class="btn-calc">Calculer le trajet</button>
+            <button id="clearMultiBtn" class="btn-clear" title="Tout effacer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+        </div>
+        <div id="resultMulti" class="result-box"></div>
     </div>
 
     <script src="popup.js"></script>

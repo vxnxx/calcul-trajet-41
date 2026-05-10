@@ -7,6 +7,7 @@ const LAST_MODE_KEY    = 'trajet41_lastMode';
 const AUTOCOMPLETE_KEY = 'trajet41_autocomplete';
 const RETOUR_STATE_KEY  = 'trajet41_retourState';
 const RETOUR_MEMORY_KEY = 'trajet41_retourMemory';
+const MULTI_STATE_KEY   = 'trajet41_multiState';
 
 function isAutocompleteEnabled() {
     return localStorage.getItem(AUTOCOMPLETE_KEY) !== 'false';
@@ -51,6 +52,59 @@ function restoreRetourState() {
     stops.forEach((s, i) => {
         if (i >= retourStopIds.length) addRetourStop();
         const inp = document.getElementById(retourStopIds[i]);
+        inp.value = s.value;
+        inp.dataset.lat = s.lat;
+        inp.dataset.lon = s.lon;
+    });
+}
+
+function saveMultiState() {
+    if (!isRetourMemoryEnabled()) return;
+    const startInp = document.getElementById('multiStart');
+    const endInp   = document.getElementById('multiEnd');
+    const state = {
+        start: startInp.dataset.lat
+            ? { value: startInp.value, lat: startInp.dataset.lat, lon: startInp.dataset.lon }
+            : null,
+        end: endInp.dataset.lat
+            ? { value: endInp.value, lat: endInp.dataset.lat, lon: endInp.dataset.lon }
+            : null,
+        stops: multiStopIds.map(id => {
+            const inp = document.getElementById(id);
+            return inp?.dataset.lat
+                ? { value: inp.value, lat: inp.dataset.lat, lon: inp.dataset.lon }
+                : null;
+        }).filter(Boolean),
+    };
+    localStorage.setItem(MULTI_STATE_KEY, JSON.stringify(state));
+}
+
+function restoreMultiState() {
+    if (!isRetourMemoryEnabled()) return;
+    let state;
+    try { state = JSON.parse(localStorage.getItem(MULTI_STATE_KEY)); } catch { return; }
+    if (!state) return;
+
+    if (state.start) {
+        const inp = document.getElementById('multiStart');
+        inp.value = state.start.value;
+        inp.dataset.lat = state.start.lat;
+        inp.dataset.lon = state.start.lon;
+        _clearUpdaters['multiStart']?.();
+    }
+
+    if (state.end) {
+        const inp = document.getElementById('multiEnd');
+        inp.value = state.end.value;
+        inp.dataset.lat = state.end.lat;
+        inp.dataset.lon = state.end.lon;
+        _clearUpdaters['multiEnd']?.();
+    }
+
+    const stops = state.stops || [];
+    stops.forEach((s, i) => {
+        if (i >= multiStopIds.length) addMultiStop();
+        const inp = document.getElementById(multiStopIds[i]);
         inp.value = s.value;
         inp.dataset.lat = s.lat;
         inp.dataset.lon = s.lon;
@@ -242,7 +296,6 @@ function setupAutocomplete(inputId, suggestionsId, nextInputId, onSelect, showCl
         input.value = d.label;
         input.dataset.lat = d.lat;
         input.dataset.lon = d.lon;
-        // Flash l'input-row pour confirmer la sélection
         const row = input.closest('.input-row');
         row.classList.remove('input-flash');
         void row.offsetWidth;
@@ -315,15 +368,27 @@ function checkAndCalcRetour() {
     }
 }
 
+function checkAndCalcMulti() {
+    const s = document.getElementById('multiStart');
+    const e = document.getElementById('multiEnd');
+    const allReady = multiStopIds.every(id => document.getElementById(id)?.dataset.lat);
+    if (s.dataset.lat && e.dataset.lat && allReady && multiStopIds.length > 0) {
+        triggerAutoFlash('calcMultiBtn');
+        calculerMulti();
+    }
+}
+
 setupAutocomplete('start',       'startSuggestions',       'end',  checkAndCalcSimple);
 setupAutocomplete('end',         'endSuggestions',          null,   checkAndCalcSimple);
 setupAutocomplete('retourStart', 'retourStartSuggestions',  null,   checkAndCalcRetour);
+setupAutocomplete('multiStart',  'multiStartSuggestions',   null,   checkAndCalcMulti);
+setupAutocomplete('multiEnd',    'multiEndSuggestions',     null,   checkAndCalcMulti);
 
 // ── Gestion des lignes RDV dynamiques (mode retour) ───────────────────────────
 
 let retourStopIds = [];
 let retourStopCounter = 0;
-const MAX_STOPS = 5;
+const MAX_STOPS = 7;
 
 function updateStopLabels() {
     retourStopIds.forEach((id, i) => {
@@ -383,7 +448,68 @@ function removeRetourStop(stopId) {
     checkAndCalcRetour();
 }
 
-// ── Toggle historique ─────────────────────────────────────────────────────────
+// ── Gestion des lignes RDV dynamiques (mode trajet multiple) ─────────────────
+
+let multiStopIds = [];
+let multiStopCounter = 0;
+
+function updateMultiStopLabels() {
+    multiStopIds.forEach((id, i) => {
+        const row = document.querySelector(`[data-stop-id="${id}"]`);
+        if (row) row.querySelector('.field-label').textContent = multiStopIds.length > 1 ? `RDV ${i + 1}` : 'RDV potentiel';
+    });
+}
+
+function updateMultiRemoveBtns() {
+    const show = multiStopIds.length > 1;
+    multiStopIds.forEach(id => {
+        const row = document.querySelector(`[data-stop-id="${id}"]`);
+        if (row) row.querySelector('.remove-stop-btn').style.display = show ? 'flex' : 'none';
+    });
+}
+
+function updateMultiAddBtn() {
+    document.getElementById('addMultiStopBtn').style.display = multiStopIds.length >= MAX_STOPS ? 'none' : '';
+}
+
+function addMultiStop() {
+    const idx = multiStopCounter++;
+    const inputId = `multiStop_${idx}`;
+    const sugId   = `multiStopSug_${idx}`;
+
+    const row = document.createElement('div');
+    row.className = 'input-row retour-stop-row';
+    row.dataset.stopId = inputId;
+    row.innerHTML = `
+        <div class="autocomplete-wrap">
+            <span class="field-label">RDV potentiel</span>
+            <input type="text" id="${inputId}" placeholder="Ville du rendez-vous" autocomplete="off">
+            <div class="suggestions" id="${sugId}"></div>
+        </div>
+        <button class="remove-stop-btn" title="Supprimer ce RDV" aria-label="Supprimer ce RDV" style="display:none"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg></button>
+    `;
+    document.getElementById('multiStopsContainer').appendChild(row);
+    multiStopIds.push(inputId);
+
+    row.querySelector('.remove-stop-btn').addEventListener('click', () => removeMultiStop(inputId));
+    setupAutocomplete(inputId, sugId, null, checkAndCalcMulti, false);
+    document.getElementById(inputId).addEventListener('keydown', e => { if (e.key === 'Enter') calculerMulti(); });
+
+    updateMultiStopLabels();
+    updateMultiRemoveBtns();
+    updateMultiAddBtn();
+}
+
+function removeMultiStop(stopId) {
+    const row = document.querySelector(`[data-stop-id="${stopId}"]`);
+    if (row) row.remove();
+    multiStopIds = multiStopIds.filter(id => id !== stopId);
+    delete _clearUpdaters[stopId];
+    updateMultiStopLabels();
+    updateMultiRemoveBtns();
+    updateMultiAddBtn();
+    checkAndCalcMulti();
+}
 
 // ── Toggle thème clair / sombre ───────────────────────────────────────────────
 
@@ -436,21 +562,23 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        const isRetour = tab.dataset.tab === 'retour';
-        document.getElementById('modeSimple').style.display = isRetour ? 'none' : 'block';
-        document.getElementById('modeRetour').style.display = isRetour ? 'block' : 'none';
-        localStorage.setItem(LAST_MODE_KEY, tab.dataset.tab);
+        const tabName = tab.dataset.tab;
+        document.getElementById('modeSimple').style.display = tabName === 'simple' ? 'block' : 'none';
+        document.getElementById('modeRetour').style.display = tabName === 'retour' ? 'block' : 'none';
+        document.getElementById('modeMulti').style.display  = tabName === 'multi'  ? 'block' : 'none';
+        localStorage.setItem(LAST_MODE_KEY, tabName);
     });
 });
 
 const _lastMode = localStorage.getItem(LAST_MODE_KEY);
 if (_lastMode === 'retour') document.querySelector('[data-tab="retour"]').click();
+else if (_lastMode === 'multi') document.querySelector('[data-tab="multi"]').click();
 
 // ── Escape → reset complet ────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    ['start', 'end', 'retourStart', ...retourStopIds].forEach(id => {
+    ['start', 'end', 'retourStart', 'multiStart', 'multiEnd', ...retourStopIds, ...multiStopIds].forEach(id => {
         const inp = document.getElementById(id);
         if (!inp) return;
         inp.value = '';
@@ -460,10 +588,13 @@ document.addEventListener('keydown', e => {
     Object.values(_clearUpdaters).forEach(fn => fn());
     document.getElementById('result').style.display       = 'none';
     document.getElementById('resultRetour').style.display = 'none';
+    document.getElementById('resultMulti').style.display  = 'none';
     restoreBtn('calcBtn');
     restoreBtn('calcRetourBtn');
+    restoreBtn('calcMultiBtn');
     const activeTab = document.querySelector('.tab.active').dataset.tab;
-    document.getElementById(activeTab === 'retour' ? 'retourStart' : 'start').focus();
+    const focusId = activeTab === 'retour' ? 'retourStart' : activeTab === 'multi' ? 'multiStart' : 'start';
+    document.getElementById(focusId).focus();
 });
 
 // ── Actions mode simple ───────────────────────────────────────────────────────
@@ -478,7 +609,6 @@ function setBloisOnInput(inputId, nextInputId) {
 }
 
 document.getElementById('fromBloisBtn').addEventListener('click', () => setBloisOnInput('start', 'end'));
-document.getElementById('retourFromBloisBtn').addEventListener('click', () => { setBloisOnInput('retourStart', null); checkAndCalcRetour(); });
 
 document.getElementById('swapBtn').addEventListener('click', () => {
     const s = document.getElementById('start');
@@ -496,11 +626,54 @@ document.getElementById('start').addEventListener('keydown', e => { if (e.key ==
 
 // ── Actions mode retour ───────────────────────────────────────────────────────
 
+function clearInput(id) {
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    inp.value = '';
+    delete inp.dataset.lat;
+    delete inp.dataset.lon;
+    _clearUpdaters[id]?.();
+}
+
+function clearRetour() {
+    clearInput('retourStart');
+    while (retourStopIds.length > 1) removeRetourStop(retourStopIds[retourStopIds.length - 1]);
+    if (retourStopIds.length === 1) clearInput(retourStopIds[0]);
+    const r = document.getElementById('resultRetour');
+    r.style.display = 'none';
+    r.innerHTML = '';
+    saveRetourState();
+}
+
+function clearMulti() {
+    clearInput('multiStart');
+    clearInput('multiEnd');
+    while (multiStopIds.length > 1) removeMultiStop(multiStopIds[multiStopIds.length - 1]);
+    if (multiStopIds.length === 1) clearInput(multiStopIds[0]);
+    const r = document.getElementById('resultMulti');
+    r.style.display = 'none';
+    r.innerHTML = '';
+    saveMultiState();
+}
+
+document.getElementById('retourFromBloisBtn').addEventListener('click', () => { setBloisOnInput('retourStart', null); checkAndCalcRetour(); });
 document.getElementById('calcRetourBtn').addEventListener('click', calculerRetour);
+document.getElementById('clearRetourBtn').addEventListener('click', clearRetour);
 document.getElementById('retourStart').addEventListener('keydown', e => { if (e.key === 'Enter') calculerRetour(); });
 document.getElementById('addStopBtn').addEventListener('click', addRetourStop);
 addRetourStop();
 restoreRetourState();
+
+// ── Actions mode trajet multiple ──────────────────────────────────────────────
+
+document.getElementById('multiStartBloisBtn').addEventListener('click', () => { setBloisOnInput('multiStart', null); checkAndCalcMulti(); });
+document.getElementById('multiEndBloisBtn').addEventListener('click', () => { setBloisOnInput('multiEnd', null); checkAndCalcMulti(); });
+document.getElementById('calcMultiBtn').addEventListener('click', calculerMulti);
+document.getElementById('clearMultiBtn').addEventListener('click', clearMulti);
+document.getElementById('multiStart').addEventListener('keydown', e => { if (e.key === 'Enter') calculerMulti(); });
+document.getElementById('addMultiStopBtn').addEventListener('click', addMultiStop);
+addMultiStop();
+restoreMultiState();
 
 // ── Geocoding ─────────────────────────────────────────────────────────────────
 
@@ -568,7 +741,7 @@ function showError(resultId, btnId, msg) {
     const r = document.getElementById(resultId);
     r.className = 'result-box';
     r.style.display = 'block';
-    r.innerHTML = `<div class="result-error"><span class="result-error-icon">⚠️</span>${msg}</div>`;
+    r.innerHTML = `<div class="result-error"><span class="result-error-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>${msg}</div>`;
     void r.offsetWidth;
     r.classList.add('visible');
 }
@@ -677,21 +850,20 @@ async function calculerRetour() {
     showLoading('resultRetour', 'calcRetourBtn');
 
     try {
-        const posA = await getCoords('retourStart');
-        const posStops = [];
-        for (const id of retourStopIds) posStops.push(await getCoords(id));
+        const [posA, ...posStops] = await Promise.all([
+            getCoords('retourStart'),
+            ...retourStopIds.map(id => getCoords(id)),
+        ]);
         updateLoadingText('calcRetourBtn', 'Calcul des itinéraires…');
 
         const base        = 'https://router.project-osrm.org/route/v1/driving';
         const stopsCoords = posStops.map(p => `${p.lon},${p.lat}`).join(';');
 
-        // Requêtes principales + routes intermédiaires pour le détail par RDV (en parallèle)
         const intermediateRequests = posStops.slice(0, -1).map((_, k) => {
             const partial = posStops.slice(0, k + 1).map(p => `${p.lon},${p.lat}`).join(';');
             return fetch(`${base}/${posA.lon},${posA.lat};${partial};${BLOIS.lon},${BLOIS.lat}?overview=false`).then(r => r.json());
         });
 
-        // Matrice de durées pour optimisation d'ordre (2+ RDVs uniquement)
         const allPoints    = [posA, ...posStops, BLOIS].map(p => `${p.lon},${p.lat}`).join(';');
         const tableRequest = posStops.length >= 2
             ? fetch(`https://router.project-osrm.org/table/v1/driving/${allPoints}?annotations=duration`).then(r => r.json()).catch(() => null)
@@ -720,12 +892,9 @@ async function calculerRetour() {
         const distDirectKm = (dataDirect.routes[0].distance / 1000).toFixed(1);
         const distDetourKm = (dataDetour.routes[0].distance / 1000).toFixed(1);
 
-        // Arrondir le delta brut pour éviter les -1 min par arrondi séparé
         const extraRaw = dataDetour.routes[0].duration - dataDirect.routes[0].duration;
         const extra    = Math.max(0, Math.round(extraRaw / 60));
 
-        // Détail incrémental par RDV : coût de chaque stop par rapport à l'étape précédente
-        // allSteps = [direct, via S1, via S1+S2, ..., via tous]
         const allSteps = [dataDirect, ...dataIntermediate, dataDetour];
         const stepDeltas = posStops.map((_, i) => {
             const raw = allSteps[i + 1].routes?.[0]?.duration - allSteps[i].routes?.[0]?.duration;
@@ -758,14 +927,14 @@ async function calculerRetour() {
         let optimalHtml = '';
         if (posStops.length >= 2 && dataTable?.durations) {
             const n        = posStops.length;
-            const d        = dataTable.durations; // d[i][j] secondes ; 0=A, 1..n=stops, n+1=Blois
+            const d        = dataTable.durations;
             const identity = posStops.map((_, i) => i);
 
-            function routeDur(perm) {
+            const routeDur = perm => {
                 let t = d[0][perm[0] + 1];
                 for (let i = 0; i < perm.length - 1; i++) t += d[perm[i] + 1][perm[i + 1] + 1];
                 return t + d[perm[perm.length - 1] + 1][n + 1];
-            }
+            };
 
             const currentDur = routeDur(identity);
             let bestPerm = identity, bestDur = currentDur;
@@ -774,7 +943,8 @@ async function calculerRetour() {
                 if (dur < bestDur) { bestDur = dur; bestPerm = perm; }
             }
 
-            const savedMin = Math.round((currentDur - bestDur) / 60);
+            const savedMin   = Math.round((currentDur - bestDur) / 60);
+            const bestDurMin = Math.round(bestDur / 60);
             if (savedMin >= 1 && bestPerm.some((v, i) => v !== identity[i])) {
                 const names = bestPerm.map(i => stopVals[i].split(',')[0].trim());
                 optimalHtml = `<div class="optimal-order">
@@ -783,6 +953,7 @@ async function calculerRetour() {
                         Ordre optimal — économise ${savedMin} min
                     </div>
                     <div class="optimal-order-stops">${names.join(' → ')}</div>
+                    <div class="optimal-order-total">Trajet total : ${formatDuration(bestDurMin)}</div>
                 </div>`;
             }
         }
@@ -830,5 +1001,178 @@ async function calculerRetour() {
         saveRetourState();
     } catch (err) {
         showError('resultRetour', 'calcRetourBtn', err.message);
+    }
+}
+
+// ── Calcul mode trajet multiple ───────────────────────────────────────────────
+
+async function calculerMulti() {
+    const startVal = document.getElementById('multiStart').value.trim();
+    const endVal   = document.getElementById('multiEnd').value.trim();
+    const stopVals = multiStopIds.map(id => document.getElementById(id)?.value.trim() || '');
+    if (!startVal || !endVal || stopVals.some(v => !v)) {
+        if (!startVal) flashInputError('multiStart');
+        if (!endVal)   flashInputError('multiEnd');
+        multiStopIds.forEach((id, i) => { if (!stopVals[i]) flashInputError(id); });
+        showError('resultMulti', 'calcMultiBtn', "Remplissez tous les champs");
+        return;
+    }
+
+    showLoading('resultMulti', 'calcMultiBtn');
+
+    try {
+        const [posA, posEnd, ...posStops] = await Promise.all([
+            getCoords('multiStart'),
+            getCoords('multiEnd'),
+            ...multiStopIds.map(id => getCoords(id)),
+        ]);
+        updateLoadingText('calcMultiBtn', 'Calcul des itinéraires…');
+
+        const base        = 'https://router.project-osrm.org/route/v1/driving';
+        const stopsCoords = posStops.map(p => `${p.lon},${p.lat}`).join(';');
+
+        const intermediateRequests = posStops.slice(0, -1).map((_, k) => {
+            const partial = posStops.slice(0, k + 1).map(p => `${p.lon},${p.lat}`).join(';');
+            return fetch(`${base}/${posA.lon},${posA.lat};${partial};${posEnd.lon},${posEnd.lat}?overview=false`).then(r => r.json());
+        });
+
+        const allPoints    = [posA, ...posStops, posEnd].map(p => `${p.lon},${p.lat}`).join(';');
+        const tableRequest = posStops.length >= 2
+            ? fetch(`https://router.project-osrm.org/table/v1/driving/${allPoints}?annotations=duration`).then(r => r.json()).catch(() => null)
+            : Promise.resolve(null);
+
+        let dataDirect, dataDetour, dataIntermediate, dataTable;
+        try {
+            const results = await Promise.all([
+                fetch(`${base}/${posA.lon},${posA.lat};${posEnd.lon},${posEnd.lat}?overview=false`).then(r => r.json()),
+                fetch(`${base}/${posA.lon},${posA.lat};${stopsCoords};${posEnd.lon},${posEnd.lat}?overview=false`).then(r => r.json()),
+                ...intermediateRequests,
+                tableRequest,
+            ]);
+            dataDirect       = results[0];
+            dataDetour       = results[1];
+            dataIntermediate = results.slice(2, 2 + intermediateRequests.length);
+            dataTable        = results[results.length - 1];
+        } catch {
+            throw new Error("Service de calcul indisponible");
+        }
+
+        if (!dataDirect.routes?.[0] || !dataDetour.routes?.[0]) throw new Error("Itinéraire introuvable");
+
+        const minDirect    = Math.round(dataDirect.routes[0].duration / 60);
+        const minDetour    = Math.round(dataDetour.routes[0].duration / 60);
+        const distDirectKm = (dataDirect.routes[0].distance / 1000).toFixed(1);
+        const distDetourKm = (dataDetour.routes[0].distance / 1000).toFixed(1);
+
+        const extraRaw = dataDetour.routes[0].duration - dataDirect.routes[0].duration;
+        const extra    = Math.max(0, Math.round(extraRaw / 60));
+
+        const allSteps = [dataDirect, ...dataIntermediate, dataDetour];
+        const stepDeltas = posStops.map((_, i) => {
+            const raw = allSteps[i + 1].routes?.[0]?.duration - allSteps[i].routes?.[0]?.duration;
+            return isFinite(raw) ? Math.max(0, Math.round(raw / 60)) : null;
+        });
+
+        const status = extra < 10
+            ? { cls: 'status-ok',   icon: STATUS_SVG.ok,   label: 'Peu d\'impact',      title: 'Allongement < 10 min' }
+            : extra < 25
+            ? { cls: 'status-warn', icon: STATUS_SVG.warn, label: 'Allongement modéré', title: 'Allongement entre 10 et 25 min' }
+            : { cls: 'status-bad',  icon: STATUS_SVG.bad,  label: 'Très allongé',       title: 'Allongement > 25 min' };
+
+        const extraSign  = extra === 0 ? 'Aucun' : `+${extra}`;
+        const rdvLabel   = multiStopIds.length > 1 ? `Avec ces ${multiStopIds.length} RDVs` : 'Avec ce RDV';
+        const endName    = endVal.split(',')[0].trim();
+        const waypoints  = stopVals.map(encodeURIComponent).join('|');
+        const mapsMultiUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startVal)}&waypoints=${waypoints}&destination=${encodeURIComponent(endVal)}&travelmode=driving`;
+
+        const breakdownHtml = multiStopIds.length > 1
+            ? `<div class="stop-breakdown">${stopVals.map((v, i) => {
+                const name  = v.split(',')[0].trim();
+                const delta = stepDeltas[i];
+                const txt   = delta === null ? '–' : delta === 0 ? 'Aucun' : `+${delta} min`;
+                return `<div class="stop-breakdown-row">
+                    <span class="stop-breakdown-name">${name}</span>
+                    <span class="stop-breakdown-delta">${txt}</span>
+                </div>`;
+              }).join('')}</div>`
+            : '';
+
+        let optimalHtml = '';
+        if (posStops.length >= 2 && dataTable?.durations) {
+            const n        = posStops.length;
+            const d        = dataTable.durations;
+            const identity = posStops.map((_, i) => i);
+
+            const routeDur = perm => {
+                let t = d[0][perm[0] + 1];
+                for (let i = 0; i < perm.length - 1; i++) t += d[perm[i] + 1][perm[i + 1] + 1];
+                return t + d[perm[perm.length - 1] + 1][n + 1];
+            };
+
+            const currentDur = routeDur(identity);
+            let bestPerm = identity, bestDur = currentDur;
+            for (const perm of getPermutations(identity)) {
+                const dur = routeDur(perm);
+                if (dur < bestDur) { bestDur = dur; bestPerm = perm; }
+            }
+
+            const savedMin   = Math.round((currentDur - bestDur) / 60);
+            const bestDurMin = Math.round(bestDur / 60);
+            if (savedMin >= 1 && bestPerm.some((v, i) => v !== identity[i])) {
+                const names = bestPerm.map(i => stopVals[i].split(',')[0].trim());
+                optimalHtml = `<div class="optimal-order">
+                    <div class="optimal-order-header">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        Ordre optimal — économise ${savedMin} min
+                    </div>
+                    <div class="optimal-order-stops">${names.join(' → ')}</div>
+                    <div class="optimal-order-total">Trajet total : ${formatDuration(bestDurMin)}</div>
+                </div>`;
+            }
+        }
+
+        const r = document.getElementById('resultMulti');
+        r.className = 'result-box';
+        r.style.display = 'block';
+        r.innerHTML = `
+            <div class="result-success">
+                <div class="compare-rows">
+                    <div class="compare-row">
+                        <span class="compare-label">Direct → ${endName}</span>
+                        <div class="compare-val-col">
+                            <span class="compare-val">${formatDuration(minDirect)}</span>
+                            <span class="compare-sub">${distDirectKm} km</span>
+                        </div>
+                    </div>
+                    <div class="compare-row">
+                        <span class="compare-label">${rdvLabel}</span>
+                        <div class="compare-val-col">
+                            <span class="compare-val">${formatDuration(minDetour)}</span>
+                            <span class="compare-sub">${distDetourKm} km</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="detour-hero-wrap">
+                    <div class="detour-hero-label">Temps supplémentaire</div>
+                    <div class="detour-hero">
+                        <span class="val">${extraSign}</span>
+                        ${extra > 0 ? '<span class="unit">min</span>' : ''}
+                    </div>
+                </div>
+                <span class="status-badge ${status.cls}" title="${status.title}">${status.icon} ${status.label}</span>
+                ${breakdownHtml}
+                ${optimalHtml}
+                <button class="btn-maps" id="mapsMultiBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                    Voir dans Google Maps
+                </button>
+            </div>`;
+        void r.offsetWidth;
+        r.classList.add('visible');
+        document.getElementById('mapsMultiBtn').addEventListener('click', () => window.open(mapsMultiUrl, '_blank'));
+        restoreBtn('calcMultiBtn');
+        saveMultiState();
+    } catch (err) {
+        showError('resultMulti', 'calcMultiBtn', err.message);
     }
 }
